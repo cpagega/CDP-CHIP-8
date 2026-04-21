@@ -274,7 +274,7 @@ void CDP_Chip8_cycle(CDP_CHIP8_CPU* cpu, CDP_CHIP8_GUI* gui, CDP_CHIP8_Keypad* k
                 cpu->registers[0xF] = 1;
             }
             break;
-            // Get Key press. this is a blocking call
+            // Get Key press
         case 0x0A:
             // TODO: this may not be exactly to chip8 spec, need to revisit
             if (keypad->keydown) {
@@ -330,7 +330,7 @@ void CDP_Chip8_render(CDP_CHIP8_GUI* gui) {
 }
 void CDP_Chip8_load_rom() {
     FILE* rom;
-    fopen_s(&rom, "Space Intercept [Joseph Weisbecker, 1978].ch8", "rb");
+    fopen_s(&rom, "roms/6-keypad.ch8", "rb");
     if (rom == NULL) {
         printf("Failed to read file\n");
         return;
