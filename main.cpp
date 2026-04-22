@@ -20,8 +20,8 @@ int main(int argc, char* argv[]) {
     audio_spec.format = SDL_AUDIO_F32;
     audio_spec.freq = sound.samples_per_second;
     audio_spec.channels = 2;
-    int count = 0;
 
+    int count = 0;
     SDL_AudioDeviceID* devices = SDL_GetAudioPlaybackDevices(&count);
     SDL_AudioDeviceID device = 0;
     if (count > 0) {
@@ -74,7 +74,7 @@ int main(int argc, char* argv[]) {
             case(SDL_EVENT_KEY_DOWN):
             {
                 uint8_t key = CDP_Chip8_map_hexkey(event.key.scancode);
-                if (key != 0xFF) {
+                if (key != NO_KEY) {
                     keypad.key = key;
                     keypad.keys[key] = 1;
                     keypad.keydown = true;
@@ -84,7 +84,7 @@ int main(int argc, char* argv[]) {
             case(SDL_EVENT_KEY_UP):
             {
                 uint8_t key = CDP_Chip8_map_hexkey(event.key.scancode);
-                if (key != 0xFF) {
+                if (key != NO_KEY) {
                     keypad.key = key;
                     keypad.keys[key] = 0;
                     keypad.keydown = false;

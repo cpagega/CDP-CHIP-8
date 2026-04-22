@@ -12,7 +12,7 @@
 #define SCREEN_WIDTH 64
 #define SCREEN_HEIGHT 32
 #define AUDIO_SAMPLE_SIZE 4000
-
+#define NO_KEY 0xFF
 
 #define SAMPLE_RATE 48000
 #define CHANNELS 2

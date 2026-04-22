@@ -245,10 +245,12 @@ void CDP_Chip8_cycle(CDP_CHIP8_CPU* cpu, CDP_CHIP8_GUI* gui, CDP_CHIP8_Keypad* k
         // Skip if key pressed
         if (NN == 0x9E && keypad->keys[key]) {
             cpu->PC += 2;
+            keypad->key = NO_KEY;
         }
         // Skip if key not pressed
         if (NN == 0xA1 && !keypad->keys[key]) {
             cpu->PC += 2;
+            keypad->key = NO_KEY;
         }
     }
     break;
@@ -276,11 +278,13 @@ void CDP_Chip8_cycle(CDP_CHIP8_CPU* cpu, CDP_CHIP8_GUI* gui, CDP_CHIP8_Keypad* k
             break;
             // Get Key press
         case 0x0A:
-            // TODO: this may not be exactly to chip8 spec, need to revisit
-            if (keypad->keydown) {
-                cpu->registers[VX] = keypad->key;
-            } else {
+            if (keypad->key == NO_KEY) {
                 cpu->PC -= 2;
+            } else if (keypad->keydown) {
+                cpu->PC -= 2;
+            } else {
+                cpu->registers[VX] = keypad->key;
+                keypad->key = NO_KEY;
             }
             break;
             // Set I to the location of the FONT sprite in memory
@@ -338,7 +342,11 @@ void CDP_Chip8_load_rom() {
     fseek(rom, 0, SEEK_END);
     long rom_size = ftell(rom);
     fseek(rom, 0, SEEK_SET);
-    fread(&memory[0x200], 1, rom_size, rom);
+    if (rom_size < (0x1000 - 0x200)) {
+        fread(&memory[0x200], 1, rom_size, rom);
+    } else {
+        printf("Failed to load rom. File too large.\n");
+    }
 }
 
 void CDP_Chip8_clear_screen(CDP_CHIP8_GUI* gui) {
@@ -396,5 +404,5 @@ uint8_t CDP_Chip8_map_hexkey(int scancode) {
     case 25: // V
         return 0xF;
     }
-    return 0xFF;
+    return NO_KEY;
 }
