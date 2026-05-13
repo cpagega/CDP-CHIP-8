@@ -21,9 +21,15 @@
     <ClCompile Include="CDP_Chip8.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="Plaform.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="CDP_Chip8.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Platform.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>

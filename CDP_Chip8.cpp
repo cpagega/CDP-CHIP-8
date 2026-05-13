@@ -1,4 +1,8 @@
 #include "CDP_Chip8.h"
+#include <stdlib.h>
+#include <stdio.h>
+#include <cstring>
+#include <time.h>
 namespace CH8
 {
 
@@ -24,26 +28,29 @@ namespace CH8
     uint8_t memory[MEMORY_SIZE] = { 0 };
     uint32_t display_buffer[SCREEN_WIDTH * SCREEN_HEIGHT];
 
-    void reset(CPU* cpu) {
+    CPU cpu = {};
+    Keypad keypad = {};
+
+    void reset() {
         srand(time(NULL));
-        cpu->PC = 0x200;
-        cpu->I = 0;
-        cpu->SP = 0;
-        cpu->delay_timer = 0;
-        cpu->sound_timer = 0;
+        cpu.PC = 0x200;
+        cpu.I = 0;
+        cpu.SP = 0;
+        cpu.delay_timer = 0;
+        cpu.sound_timer = 0;
         memset(&memory, 0, sizeof(memory));
         memcpy(&memory[FONT_ADDR], font, sizeof(font));
-        memset(&cpu->registers, 0, sizeof(cpu->registers));
-        memset(&cpu->stack, 0, sizeof(cpu->stack));
+        memset(&cpu.registers, 0, sizeof(cpu.registers));
+        memset(&cpu.stack, 0, sizeof(cpu.stack));
         memset(&display_buffer, 0, sizeof(display_buffer));
         clear_screen();
         load_rom();
     }
 
-    void cycle(CPU* cpu, Keypad* keypad) {
+    void cycle() {
         //fetch
-        uint8_t hi_byte = memory[cpu->PC++];
-        uint8_t lo_byte = memory[cpu->PC++];
+        uint8_t hi_byte = memory[cpu.PC++];
+        uint8_t lo_byte = memory[cpu.PC++];
         //decode
         uint16_t opcode = ((uint16_t)hi_byte << 8 | lo_byte);
         uint8_t kind = (opcode & 0xF000) >> 12;
@@ -53,7 +60,6 @@ namespace CH8
         uint8_t NN = (opcode & 0x00FF);
         uint16_t NNN = (opcode & 0x0FFF);
         //execute
-       // printf("Opcode: 0x%04X | kind: %X, X: %X, Y: %X, N: 0x%04X, NN: 0x%04X, NNN: 0x%04X\n", opcode, kind, VX, VY, N, NN, NNN);
         switch (kind) {
         case 0x0:
             // clear screen
@@ -62,116 +68,116 @@ namespace CH8
             }
             // return from function
             if (opcode == 0x00EE) {
-                cpu->PC = cpu->stack[--cpu->SP];
+                cpu.PC = cpu.stack[--cpu.SP];
             }
             break;
             // Jump to NNN
         case 0x1:
-            cpu->PC = NNN;
+            cpu.PC = NNN;
             break;
         case 0x2:
             // Call
-            cpu->stack[cpu->SP++] = cpu->PC;
-            cpu->PC = NNN;
+            cpu.stack[cpu.SP++] = cpu.PC;
+            cpu.PC = NNN;
             break;
             // Skip next instruction
         case 0x3:
-            if (cpu->registers[VX] == NN) {
-                cpu->PC += 2;
+            if (cpu.registers[VX] == NN) {
+                cpu.PC += 2;
             }
             break;
             // Skip next instruction
         case 0x4:
-            if (cpu->registers[VX] != NN) {
-                cpu->PC += 2;
+            if (cpu.registers[VX] != NN) {
+                cpu.PC += 2;
             }
             break;
             // Skip next instruction
         case 0x5:
-            if (cpu->registers[VX] == cpu->registers[VY]) {
-                cpu->PC += 2;
+            if (cpu.registers[VX] == cpu.registers[VY]) {
+                cpu.PC += 2;
             }
             break;
             // Set VX
         case 0x6:
-            cpu->registers[VX] = NN;
+            cpu.registers[VX] = NN;
             break;
             // Add to VX
         case 0x7:
-            cpu->registers[VX] += NN;
+            cpu.registers[VX] += NN;
             break;
         case 0x8:
             // Logical and Arithmetic instructions
             switch (N) {
                 // Set assign VY to VX
             case 0x0:
-                cpu->registers[VX] = cpu->registers[VY];
-                cpu->registers[0xF] = 0;
+                cpu.registers[VX] = cpu.registers[VY];
+                cpu.registers[0xF] = 0;
                 break;
                 // OR
             case 0x1:
-                cpu->registers[VX] |= cpu->registers[VY];
-                cpu->registers[0xF] = 0;
+                cpu.registers[VX] |= cpu.registers[VY];
+                cpu.registers[0xF] = 0;
                 break;
                 // AND
             case 0x2:
-                cpu->registers[VX] &= cpu->registers[VY];
-                cpu->registers[0xF] = 0;
+                cpu.registers[VX] &= cpu.registers[VY];
+                cpu.registers[0xF] = 0;
                 break;
                 // XOR
             case 0x3:
-                cpu->registers[VX] ^= cpu->registers[VY];
-                cpu->registers[0xF] = 0;
+                cpu.registers[VX] ^= cpu.registers[VY];
+                cpu.registers[0xF] = 0;
                 break;
                 // VX + VY
             case 0x4:
             {
-                uint8_t a = cpu->registers[VX];
-                uint8_t b = cpu->registers[VY];
+                uint8_t a = cpu.registers[VX];
+                uint8_t b = cpu.registers[VY];
                 uint8_t sum = a + b;
                 uint8_t carry = (sum < a) ? 1 : 0;
-                cpu->registers[VX] = sum;
-                cpu->registers[0xF] = carry;
+                cpu.registers[VX] = sum;
+                cpu.registers[0xF] = carry;
             }
             break;
             // VX - VY 
             case 0x5:
             {
 
-                uint8_t a = cpu->registers[VX];
-                uint8_t b = cpu->registers[VY];
+                uint8_t a = cpu.registers[VX];
+                uint8_t b = cpu.registers[VY];
                 uint8_t diff = a - b;
                 uint8_t carry = (a >= b) ? 1 : 0;
-                cpu->registers[VX] = diff;
-                cpu->registers[0xF] = carry;
+                cpu.registers[VX] = diff;
+                cpu.registers[0xF] = carry;
             }
             break;
             // RSH
             case 0x6:
             {
-                uint8_t a = cpu->registers[VY];
-                cpu->registers[VX] = a >> 1;
-                cpu->registers[0xF] = a & 0x1;
+                uint8_t a = cpu.registers[VY];
+                cpu.registers[VX] = a >> 1;
+                cpu.registers[0xF] = a & 0x1;
 
             }
             break;
             // VY - VX
             case 0x7:
             {
-                uint8_t a = cpu->registers[VY];
-                uint8_t b = cpu->registers[VX];
+                uint8_t a = cpu.registers[VY];
+                uint8_t b = cpu.registers[VX];
                 uint8_t diff = a - b;
                 uint8_t carry = (a >= b) ? 1 : 0;
-                cpu->registers[VX] = diff;
-                cpu->registers[0xF] = carry;
+                cpu.registers[VX] = diff;
+                cpu.registers[0xF] = carry;
             }
             break;
             // LSH
             case 0xE:
             {
-                uint8_t a = cpu->registers[VY];
-                cpu->registers[VX] = a << 1;
-                cpu->registers[0xF] = (a >> 7) & 1;
+                uint8_t a = cpu.registers[VY];
+                cpu.registers[VX] = a << 1;
+                cpu.registers[0xF] = (a >> 7) & 1;
 
             }
             break;
@@ -183,39 +189,39 @@ namespace CH8
             break;
             // Skip
         case 0x9:
-            if (cpu->registers[VX] != cpu->registers[VY]) {
-                cpu->PC += 2;
+            if (cpu.registers[VX] != cpu.registers[VY]) {
+                cpu.PC += 2;
             }
             break;
             // Set I to address
         case 0xA:
-            cpu->I = NNN;
+            cpu.I = NNN;
             break;
             // Jump
         case 0xB:
-            cpu->PC = NNN + cpu->registers[0];
+            cpu.PC = NNN + cpu.registers[0];
             break;
             // Rand
         case 0xC:
         {
             int random_number = rand();
-            cpu->registers[VX] = random_number & NN;
+            cpu.registers[VX] = random_number & NN;
         }
         break;
         // Draw
         case 0xD:
         {
             // wait until previous frame is drawn
-            if (!cpu->display) {
-                cpu->PC -= 2;
+            if (!cpu.display) {
+                cpu.PC -= 2;
                 return;
             }
-            cpu->display = false;
-            uint8_t x = cpu->registers[VX] % SCREEN_WIDTH;
-            uint8_t y = cpu->registers[VY] % SCREEN_HEIGHT;
-            cpu->registers[0xF] = 0;
+            cpu.display = false;
+            uint8_t x = cpu.registers[VX] % SCREEN_WIDTH;
+            uint8_t y = cpu.registers[VY] % SCREEN_HEIGHT;
+            cpu.registers[0xF] = 0;
             for (uint8_t row = 0; row < N; row++) {
-                uint8_t sprite_row = memory[cpu->I + row];
+                uint8_t sprite_row = memory[cpu.I + row];
                 for (uint8_t bit = 0; bit < 8; bit++) {
                     uint8_t px = x + bit;
                     uint8_t py = y + row;
@@ -223,7 +229,7 @@ namespace CH8
                     if ((sprite_row & (0x80 >> bit)) == 0) continue;
                     uint16_t index = py * SCREEN_WIDTH + px;
                     if (display_buffer[index] == 0xFFFFFFFF) {
-                        cpu->registers[0xF] = 1;
+                        cpu.registers[0xF] = 1;
                         display_buffer[index] = 0xFF000000;
                     } else {
                         display_buffer[index] = 0xFFFFFFFF;
@@ -235,16 +241,16 @@ namespace CH8
         // Skip
         case 0xE:
         {
-            uint8_t key = cpu->registers[VX];
+            uint8_t key = cpu.registers[VX];
             // Skip if key pressed
-            if (NN == 0x9E && keypad->keys[key]) {
-                cpu->PC += 2;
+            if (NN == 0x9E && keypad.keys[key]) {
+                cpu.PC += 2;
             }
             // Skip if key not pressed
-            if (NN == 0xA1 && !keypad->keys[key]) {
-                cpu->PC += 2;
+            if (NN == 0xA1 && !keypad.keys[key]) {
+                cpu.PC += 2;
             }
-            keypad->key = NO_KEY;
+            keypad.key = NO_KEY;
         }
         break;
 
@@ -252,60 +258,60 @@ namespace CH8
             switch (NN) {
             case 0x07:
                 // Get the delay timer value and assign to VX
-                cpu->registers[VX] = cpu->delay_timer;
+                cpu.registers[VX] = cpu.delay_timer;
                 break;
                 // Set the delay timer to VX
             case 0x15:
-                cpu->delay_timer = cpu->registers[VX];
+                cpu.delay_timer = cpu.registers[VX];
                 break;
                 // Set the sound timer to VX
             case 0x18:
-                cpu->sound_timer = cpu->registers[VX];
+                cpu.sound_timer = cpu.registers[VX];
                 break;
                 // Increment I by VX
             case 0x1E:
-                cpu->I += cpu->registers[VX];
-                if (cpu->I > 0x0FFF) {
-                    cpu->registers[0xF] = 1;
+                cpu.I += cpu.registers[VX];
+                if (cpu.I > 0x0FFF) {
+                    cpu.registers[0xF] = 1;
                 }
                 break;
                 // Get Key press
             case 0x0A:
-                if (keypad->key == NO_KEY) {
-                    cpu->PC -= 2;
-                } else if (keypad->keydown) {
-                    cpu->PC -= 2;
+                if (keypad.key == NO_KEY) {
+                    cpu.PC -= 2;
+                } else if (keypad.keydown) {
+                    cpu.PC -= 2;
                 } else {
-                    cpu->registers[VX] = keypad->key;
-                    keypad->key = NO_KEY;
+                    cpu.registers[VX] = keypad.key;
+                    keypad.key = NO_KEY;
                 }
                 break;
                 // Set I to the location of the FONT sprite in memory
             case 0x29:
-                cpu->I = FONT_ADDR + cpu->registers[VX];
+                cpu.I = FONT_ADDR + cpu.registers[VX];
                 break;
                 // Load the binary-coded decimal value of VX to memory
             case 0x33:
             {
-                uint8_t number = cpu->registers[VX];
-                memory[cpu->I + 2] = number % 10;
+                uint8_t number = cpu.registers[VX];
+                memory[cpu.I + 2] = number % 10;
                 number /= 10;
-                memory[cpu->I + 1] = number % 10;
+                memory[cpu.I + 1] = number % 10;
                 number /= 10;
-                memory[cpu->I] = number % 10;
+                memory[cpu.I] = number % 10;
             }
             break;
             case 0x55: // Store
                 for (uint8_t reg = 0; reg <= VX; reg++) {
-                    memory[cpu->I + reg] = cpu->registers[reg];
+                    memory[cpu.I + reg] = cpu.registers[reg];
                 }
-                cpu->I += VX + 1;
+                cpu.I += VX + 1;
                 break;
             case 0x65: // Load
                 for (uint8_t reg = 0; reg <= VX; reg++) {
-                    cpu->registers[reg] = memory[cpu->I + reg];
+                    cpu.registers[reg] = memory[cpu.I + reg];
                 }
-                cpu->I += VX + 1;
+                cpu.I += VX + 1;
                 break;
             default:
                 printf("Invalid opcode. Sucks to be you.\n");
@@ -379,7 +385,25 @@ namespace CH8
         return NO_KEY;
     }
 
-    void call_system_render(void (*func)(uint32_t*)) {
-        func(display_buffer);
+    Keypad* get_keypad() {
+        return &keypad;
+    }
+
+    void decrement_delay_timer() {
+        if (cpu.delay_timer > 0) {
+            cpu.delay_timer--;
+        }
+    }
+
+    bool decrement_sound_timer() {
+        if (cpu.sound_timer > 0) {
+            cpu.sound_timer--;
+            return true;
+        }
+        return false;
+    }
+
+    void set_display_flag() {
+        cpu.display = true;
     }
 }
