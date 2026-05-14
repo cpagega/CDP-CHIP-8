@@ -1,6 +1,6 @@
 #pragma once
 #include <stdint.h>
-
+#include <atomic>
 namespace CH8
 {
     constexpr auto MEMORY_SIZE = 0x1000;
@@ -15,7 +15,7 @@ namespace CH8
     extern uint32_t display_buffer[SCREEN_WIDTH * SCREEN_HEIGHT];
 
     struct CPU {
-        bool display;
+        std::atomic<bool> display;
         uint16_t PC;
         uint16_t I;
         uint16_t stack[16];
@@ -40,4 +40,6 @@ namespace CH8
     void set_display_flag();
     uint8_t map_hexkey(int scancode);
     Keypad* get_keypad();
+    void set_keypad(int scancode,bool key_pressed);
+    bool get_display_flag();
 }

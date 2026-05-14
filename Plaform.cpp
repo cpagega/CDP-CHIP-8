@@ -1,5 +1,3 @@
-#include <windows.h>
-//#include <SDL3/SDL_main.h>
 #include <SDL3/SDL_audio.h>
 #include "Platform.h"
 
@@ -125,7 +123,7 @@ float next_sample(Oscillator* osc) {
     return sample * osc->volume;
 }
 
-void fill_audio_buffer(Oscillator* osc, float *audio_buffer) {
+void fill_audio_buffer(Oscillator *osc, float *audio_buffer) {
     for (int32_t sample_index = 0; sample_index < AUDIO_SAMPLE_SIZE - 1; sample_index += 2) {
         float sample = next_sample(osc);
         audio_buffer[sample_index] = sample;
@@ -133,7 +131,7 @@ void fill_audio_buffer(Oscillator* osc, float *audio_buffer) {
     }
 }
 
-void play_tone(SDL_AudioStream *stream, Oscillator* osc, float *audio_buffer) {
+void play_tone(SDL_AudioStream *stream, Oscillator *osc, float *audio_buffer) {
     int queued = SDL_GetAudioStreamQueued(stream);
     if (queued < 0) {
         SDL_Log("SDL_GetAudioStreamQueued failed: %s", SDL_GetError());
@@ -150,3 +148,32 @@ void play_tone(SDL_AudioStream *stream, Oscillator* osc, float *audio_buffer) {
 void pause_tone(SDL_AudioStream* stream) {
     SDL_PauseAudioStreamDevice(stream);
 }
+
+bool processing_events(void (*key_callback)(int, bool)) {
+    SDL_Event event;
+    while (SDL_PollEvent(&event)) {
+        switch (event.type) {
+        case(SDL_EVENT_QUIT):
+            return false;
+            break;
+        case(SDL_EVENT_KEY_DOWN):
+        {
+            key_callback(event.key.scancode, true);
+        }
+        break;
+        case(SDL_EVENT_KEY_UP):
+        {
+            key_callback(event.key.scancode, false);
+        }
+        break;
+        }
+    }
+    return true;
+}
+
+
+
+/*
+
+
+*/

@@ -1,10 +1,12 @@
 #include "CDP_Chip8.h"
-#include <stdlib.h>
-#include <stdio.h>
+#include <cstdlib>
+#include <cstdio>
 #include <cstring>
-#include <time.h>
+#include <ctime>
+#include <mutex>
 namespace CH8
 {
+    std::mutex keypad_mutex;
 
     uint8_t font[80] = {
         0xF0, 0x90, 0x90, 0x90, 0xF0, // 0
@@ -243,6 +245,7 @@ namespace CH8
         {
             uint8_t key = cpu.registers[VX];
             // Skip if key pressed
+            std::lock_guard<std::mutex> read_key_press(keypad_mutex);
             if (NN == 0x9E && keypad.keys[key]) {
                 cpu.PC += 2;
             }
@@ -277,6 +280,8 @@ namespace CH8
                 break;
                 // Get Key press
             case 0x0A:
+            {
+                std::lock_guard<std::mutex> get_key(keypad_mutex);
                 if (keypad.key == NO_KEY) {
                     cpu.PC -= 2;
                 } else if (keypad.keydown) {
@@ -285,8 +290,9 @@ namespace CH8
                     cpu.registers[VX] = keypad.key;
                     keypad.key = NO_KEY;
                 }
-                break;
-                // Set I to the location of the FONT sprite in memory
+            }
+            break;
+            // Set I to the location of the FONT sprite in memory
             case 0x29:
                 cpu.I = FONT_ADDR + cpu.registers[VX];
                 break;
@@ -389,6 +395,16 @@ namespace CH8
         return &keypad;
     }
 
+    void set_keypad(int scancode, bool key_pressed) {
+        uint8_t key = CH8::map_hexkey(scancode);
+        if (key != CH8::NO_KEY) {
+            std::lock_guard<std::mutex> set_key(keypad_mutex);
+            keypad.key = key;
+            keypad.keys[key] = key_pressed ? 1 : 0;
+            keypad.keydown = key_pressed;
+        }
+    }
+
     void decrement_delay_timer() {
         if (cpu.delay_timer > 0) {
             cpu.delay_timer--;
@@ -405,5 +421,9 @@ namespace CH8
 
     void set_display_flag() {
         cpu.display = true;
+    }
+
+    bool get_display_flag() {
+        return cpu.display;
     }
 }
