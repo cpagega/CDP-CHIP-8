@@ -22,7 +22,7 @@ void render_ui(char* rom_path, std::size_t rom_path_size, std::string* status_me
 
 std::atomic<bool> running = false;
 
-int main(int argc, char* argv[]) {
+int main(int, char*[]) {
     SDL_Display display = {};
     display.title = "CDP-CHIP-8 (Cursor experiment)";
     display.width = 1920;
