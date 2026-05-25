@@ -1,4 +1,5 @@
 #include <SDL3/SDL_audio.h>
+#include <cmath>
 #include "Platform.h"
 
 

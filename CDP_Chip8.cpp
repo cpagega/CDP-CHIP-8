@@ -1,12 +1,15 @@
 #include "CDP_Chip8.h"
+#include <algorithm>
+#include <chrono>
 #include <cstdlib>
 #include <cstdio>
 #include <cstring>
-#include <ctime>
 #include <mutex>
+#include <vector>
 namespace CH8
 {
     std::mutex keypad_mutex;
+    std::mutex state_mutex;
 
     uint8_t font[80] = {
         0xF0, 0x90, 0x90, 0x90, 0xF0, // 0
@@ -32,24 +35,142 @@ namespace CH8
 
     CPU cpu = {};
     Keypad keypad = {};
+    std::atomic<bool> rom_loaded = false;
 
-    void reset() {
-        srand(time(NULL));
-        cpu.PC = 0x200;
-        cpu.I = 0;
+    const uint8_t* glyph_for(char c) {
+        static const uint8_t space[5] = { 0b000, 0b000, 0b000, 0b000, 0b000 };
+        static const uint8_t dash[5] = { 0b000, 0b000, 0b111, 0b000, 0b000 };
+        static const uint8_t dot[5] = { 0b000, 0b000, 0b000, 0b000, 0b010 };
+        static const uint8_t zero[5] = { 0b111, 0b101, 0b101, 0b101, 0b111 };
+        static const uint8_t eight[5] = { 0b111, 0b101, 0b111, 0b101, 0b111 };
+        static const uint8_t a[5] = { 0b010, 0b101, 0b111, 0b101, 0b101 };
+        static const uint8_t b[5] = { 0b110, 0b101, 0b110, 0b101, 0b110 };
+        static const uint8_t glyph_c[5] = { 0b111, 0b100, 0b100, 0b100, 0b111 };
+        static const uint8_t d[5] = { 0b110, 0b101, 0b101, 0b101, 0b110 };
+        static const uint8_t e[5] = { 0b111, 0b100, 0b110, 0b100, 0b111 };
+        static const uint8_t h[5] = { 0b101, 0b101, 0b111, 0b101, 0b101 };
+        static const uint8_t i[5] = { 0b111, 0b010, 0b010, 0b010, 0b111 };
+        static const uint8_t l[5] = { 0b100, 0b100, 0b100, 0b100, 0b111 };
+        static const uint8_t m[5] = { 0b101, 0b111, 0b111, 0b101, 0b101 };
+        static const uint8_t n[5] = { 0b110, 0b101, 0b101, 0b101, 0b101 };
+        static const uint8_t o[5] = { 0b111, 0b101, 0b101, 0b101, 0b111 };
+        static const uint8_t p[5] = { 0b110, 0b101, 0b110, 0b100, 0b100 };
+        static const uint8_t r[5] = { 0b110, 0b101, 0b110, 0b101, 0b101 };
+        static const uint8_t t[5] = { 0b111, 0b010, 0b010, 0b010, 0b010 };
+        static const uint8_t u[5] = { 0b101, 0b101, 0b101, 0b101, 0b111 };
+        static const uint8_t v[5] = { 0b101, 0b101, 0b101, 0b101, 0b010 };
+
+        if (c >= 'a' && c <= 'z') {
+            c = c - ('a' - 'A');
+        }
+
+        switch (c) {
+        case ' ': return space;
+        case '-': return dash;
+        case '.': return dot;
+        case '0': return zero;
+        case '8': return eight;
+        case 'A': return a;
+        case 'B': return b;
+        case 'C': return glyph_c;
+        case 'D': return d;
+        case 'E': return e;
+        case 'H': return h;
+        case 'I': return i;
+        case 'L': return l;
+        case 'M': return m;
+        case 'N': return n;
+        case 'O': return o;
+        case 'P': return p;
+        case 'R': return r;
+        case 'T': return t;
+        case 'U': return u;
+        case 'V': return v;
+        default: return space;
+        }
+    }
+
+    int text_width(const char* text) {
+        return (int)strlen(text) * 4 - 1;
+    }
+
+    void draw_text_unlocked(int x, int y, const char* text, uint32_t color) {
+        for (int character = 0; text[character] != '\0'; character++) {
+            const uint8_t* glyph = glyph_for(text[character]);
+            int glyph_x = x + character * 4;
+            for (int row = 0; row < 5; row++) {
+                for (int column = 0; column < 3; column++) {
+                    if ((glyph[row] & (0b100 >> column)) == 0) {
+                        continue;
+                    }
+
+                    int px = glyph_x + column;
+                    int py = y + row;
+                    if (px >= 0 && px < SCREEN_WIDTH && py >= 0 && py < SCREEN_HEIGHT) {
+                        display_buffer[py * SCREEN_WIDTH + px] = color;
+                    }
+                }
+            }
+        }
+    }
+
+    void clear_screen_unlocked() {
+        memset(&display_buffer, 0, sizeof(display_buffer));
+    }
+
+    void draw_splash_screen_unlocked() {
+        clear_screen_unlocked();
+        const uint32_t white = 0xFFFFFFFF;
+        const uint32_t dim = 0xFFAAAAAA;
+        const char* title = "CDP-CHIP-8";
+        const char* line1 = "Load a rom";
+        const char* line2 = "to continue.";
+
+        draw_text_unlocked((SCREEN_WIDTH - text_width(title)) / 2, 7, title, white);
+        draw_text_unlocked((SCREEN_WIDTH - text_width(line1)) / 2, 18, line1, dim);
+        draw_text_unlocked((SCREEN_WIDTH - text_width(line2)) / 2, 25, line2, dim);
+    }
+
+    void initialize_unlocked(bool show_splash) {
+        auto seed = std::chrono::high_resolution_clock::now().time_since_epoch().count();
+        srand((unsigned int)seed);
+        cpu.display = true;
+        cpu.PC = PROGRAM_START_ADDR;
+        cpu.I = PROGRAM_START_ADDR;
         cpu.SP = 0;
         cpu.delay_timer = 0;
         cpu.sound_timer = 0;
-        memset(&memory, 0, sizeof(memory));
-        memcpy(&memory[FONT_ADDR], font, sizeof(font));
         memset(&cpu.registers, 0, sizeof(cpu.registers));
         memset(&cpu.stack, 0, sizeof(cpu.stack));
-        memset(&display_buffer, 0, sizeof(display_buffer));
-        clear_screen();
-        load_rom();
+        memset(&keypad, 0, sizeof(keypad));
+        keypad.key = NO_KEY;
+        memcpy(&memory[FONT_ADDR], font, sizeof(font));
+        rom_loaded = false;
+
+        if (show_splash) {
+            draw_splash_screen_unlocked();
+        } else {
+            clear_screen_unlocked();
+        }
+    }
+
+    void initialize() {
+        std::lock_guard<std::mutex> lock(state_mutex);
+        initialize_unlocked(true);
+    }
+
+    void draw_splash_screen() {
+        std::lock_guard<std::mutex> lock(state_mutex);
+        draw_splash_screen_unlocked();
+        rom_loaded = false;
     }
 
     void cycle() {
+        if (!rom_loaded) {
+            return;
+        }
+
+        std::lock_guard<std::mutex> lock(state_mutex);
         //fetch
         uint8_t hi_byte = memory[cpu.PC++];
         uint8_t lo_byte = memory[cpu.PC++];
@@ -66,7 +187,7 @@ namespace CH8
         case 0x0:
             // clear screen
             if (opcode == 0x00E0) {
-                clear_screen();
+                clear_screen_unlocked();
             }
             // return from function
             if (opcode == 0x00EE) {
@@ -332,25 +453,87 @@ namespace CH8
         }
     }
 
-    void load_rom() {
-        FILE* rom;
-        fopen_s(&rom, "roms/7-beep.ch8", "rb");
-        if (rom == NULL) {
-            printf("Failed to read file\n");
-            return;
+    bool load_rom(const char* rom_path) {
+        if (rom_path == nullptr || rom_path[0] == '\0') {
+            printf("Failed to load rom. No file path provided.\n");
+            return false;
         }
+
+        FILE* rom = fopen(rom_path, "rb");
+        if (rom == NULL) {
+            printf("Failed to read file: %s\n", rom_path);
+            return false;
+        }
+
         fseek(rom, 0, SEEK_END);
         long rom_size = ftell(rom);
         fseek(rom, 0, SEEK_SET);
-        if (rom_size < (MEMORY_SIZE - PROGRAM_START_ADDR)) {
-            fread(&memory[PROGRAM_START_ADDR], 1, rom_size, rom);
-        } else {
-            printf("Failed to load rom. File too large.\n");
+
+        if (rom_size <= 0 || rom_size > (MEMORY_SIZE - PROGRAM_START_ADDR)) {
+            printf("Failed to load rom. File is empty or too large: %s\n", rom_path);
+            fclose(rom);
+            return false;
         }
+
+        std::vector<uint8_t> rom_data((std::size_t)rom_size);
+        std::size_t bytes_read = fread(rom_data.data(), 1, rom_data.size(), rom);
+        fclose(rom);
+
+        if (bytes_read != rom_data.size()) {
+            printf("Failed to read complete rom: %s\n", rom_path);
+            return false;
+        }
+
+        std::lock_guard<std::mutex> lock(state_mutex);
+        initialize_unlocked(false);
+        memcpy(&memory[PROGRAM_START_ADDR], rom_data.data(), rom_data.size());
+        cpu.PC = PROGRAM_START_ADDR;
+        cpu.I = PROGRAM_START_ADDR;
+        rom_loaded = true;
+        cpu.display = true;
+        return true;
+    }
+
+    bool is_rom_loaded() {
+        return rom_loaded.load();
+    }
+
+    Debug_State get_debug_state() {
+        std::lock_guard<std::mutex> lock(state_mutex);
+        Debug_State state = {};
+        state.display = cpu.display.load();
+        state.rom_loaded = rom_loaded.load();
+        state.PC = cpu.PC;
+        state.I = cpu.I;
+        state.SP = cpu.SP;
+        state.delay_timer = cpu.delay_timer;
+        state.sound_timer = cpu.sound_timer;
+        memcpy(&state.registers, &cpu.registers, sizeof(state.registers));
+        memcpy(&state.stack, &cpu.stack, sizeof(state.stack));
+        return state;
+    }
+
+    void copy_memory(uint8_t* destination, std::size_t count) {
+        if (destination == nullptr) {
+            return;
+        }
+
+        std::lock_guard<std::mutex> lock(state_mutex);
+        memcpy(destination, memory, std::min(count, (std::size_t)MEMORY_SIZE));
+    }
+
+    void copy_display_buffer(uint32_t* destination, std::size_t count) {
+        if (destination == nullptr) {
+            return;
+        }
+
+        std::lock_guard<std::mutex> lock(state_mutex);
+        memcpy(destination, display_buffer, std::min(count, (std::size_t)(SCREEN_WIDTH * SCREEN_HEIGHT)) * sizeof(uint32_t));
     }
 
     void clear_screen() {
-        memset(&display_buffer, 0, sizeof(display_buffer));
+        std::lock_guard<std::mutex> lock(state_mutex);
+        clear_screen_unlocked();
     }
 
     uint8_t map_hexkey(int scancode) {
@@ -406,12 +589,14 @@ namespace CH8
     }
 
     void decrement_delay_timer() {
+        std::lock_guard<std::mutex> lock(state_mutex);
         if (cpu.delay_timer > 0) {
             cpu.delay_timer--;
         }
     }
 
     bool decrement_sound_timer() {
+        std::lock_guard<std::mutex> lock(state_mutex);
         if (cpu.sound_timer > 0) {
             cpu.sound_timer--;
             return true;

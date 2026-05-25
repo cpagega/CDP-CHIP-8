@@ -71,19 +71,19 @@
   </ImportGroup>
   <PropertyGroup Label="UserMacros" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
-    <IncludePath>C:\Users\Chris\source\dependencies\include;$(IncludePath)</IncludePath>
+    <IncludePath>$(ProjectDir)third_party\imgui;$(ProjectDir)third_party\imgui\backends;C:\Users\Chris\source\dependencies\include;$(IncludePath)</IncludePath>
     <LibraryPath>C:\Users\Chris\source\dependencies\lib\Debug;$(LibraryPath)</LibraryPath>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
-    <IncludePath>C:\Users\Chris\source\dependencies\include;$(IncludePath)</IncludePath>
+    <IncludePath>$(ProjectDir)third_party\imgui;$(ProjectDir)third_party\imgui\backends;C:\Users\Chris\source\dependencies\include;$(IncludePath)</IncludePath>
     <LibraryPath>C:\Users\Chris\source\dependencies\lib\Release;$(LibraryPath)</LibraryPath>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
-    <IncludePath>C:\Users\Chris\source\dependencies\include;$(IncludePath)</IncludePath>
+    <IncludePath>$(ProjectDir)third_party\imgui;$(ProjectDir)third_party\imgui\backends;C:\Users\Chris\source\dependencies\include;$(IncludePath)</IncludePath>
     <LibraryPath>C:\Users\Chris\source\dependencies\lib\Debug;$(LibraryPath)</LibraryPath>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
-    <IncludePath>C:\Users\Chris\source\dependencies\include;$(IncludePath)</IncludePath>
+    <IncludePath>$(ProjectDir)third_party\imgui;$(ProjectDir)third_party\imgui\backends;C:\Users\Chris\source\dependencies\include;$(IncludePath)</IncludePath>
     <LibraryPath>C:\Users\Chris\source\dependencies\lib\Release;$(LibraryPath)</LibraryPath>
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
@@ -166,10 +166,20 @@
     <ClCompile Include="CDP_Chip8.cpp" />
     <ClCompile Include="main.cpp" />
     <ClCompile Include="Plaform.cpp" />
+    <ClCompile Include="third_party\imgui\imgui.cpp" />
+    <ClCompile Include="third_party\imgui\imgui_draw.cpp" />
+    <ClCompile Include="third_party\imgui\imgui_tables.cpp" />
+    <ClCompile Include="third_party\imgui\imgui_widgets.cpp" />
+    <ClCompile Include="third_party\imgui\backends\imgui_impl_sdl3.cpp" />
+    <ClCompile Include="third_party\imgui\backends\imgui_impl_sdlrenderer3.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="CDP_Chip8.h" />
     <ClInclude Include="Platform.h" />
+    <ClInclude Include="third_party\imgui\imconfig.h" />
+    <ClInclude Include="third_party\imgui\imgui.h" />
+    <ClInclude Include="third_party\imgui\backends\imgui_impl_sdl3.h" />
+    <ClInclude Include="third_party\imgui\backends\imgui_impl_sdlrenderer3.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
