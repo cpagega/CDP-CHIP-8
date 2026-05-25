@@ -165,292 +165,324 @@ namespace CH8
         rom_loaded = false;
     }
 
+    struct Decoded_Opcode {
+        uint16_t raw;
+        uint8_t kind;
+        uint8_t x;
+        uint8_t y;
+        uint8_t n;
+        uint8_t nn;
+        uint16_t nnn;
+    };
+
+    Decoded_Opcode decode_opcode(uint16_t opcode) {
+        Decoded_Opcode decoded = {};
+        decoded.raw = opcode;
+        decoded.kind = (opcode & 0xF000) >> 12;
+        decoded.x = (opcode & 0x0F00) >> 8;
+        decoded.y = (opcode & 0x00F0) >> 4;
+        decoded.n = opcode & 0x000F;
+        decoded.nn = opcode & 0x00FF;
+        decoded.nnn = opcode & 0x0FFF;
+        return decoded;
+    }
+
+    Decoded_Opcode fetch_opcode() {
+        uint8_t hi_byte = memory[cpu.PC++];
+        uint8_t lo_byte = memory[cpu.PC++];
+        return decode_opcode(((uint16_t)hi_byte << 8) | lo_byte);
+    }
+
+    void invalid_opcode(const Decoded_Opcode& opcode) {
+        printf("Invalid opcode. Sucks to be you.\n");
+        printf("Opcode: 0x%04X | kind: %X, X: %X, Y: %X, N: 0x%04X, NN: 0x%04X, NNN: 0x%04X\n",
+            opcode.raw,
+            opcode.kind,
+            opcode.x,
+            opcode.y,
+            opcode.n,
+            opcode.nn,
+            opcode.nnn);
+    }
+
+    void skip_next_instruction() {
+        cpu.PC += 2;
+    }
+
+    void execute_system_instruction(const Decoded_Opcode& opcode) {
+        if (opcode.raw == 0x00E0) {
+            clear_screen_unlocked();
+        }
+
+        if (opcode.raw == 0x00EE) {
+            cpu.PC = cpu.stack[--cpu.SP];
+        }
+    }
+
+    void execute_arithmetic_instruction(const Decoded_Opcode& opcode) {
+        uint8_t& vx = cpu.registers[opcode.x];
+        uint8_t& vy = cpu.registers[opcode.y];
+
+        switch (opcode.n) {
+        case 0x0:
+            vx = vy;
+            cpu.registers[0xF] = 0;
+            break;
+        case 0x1:
+            vx |= vy;
+            cpu.registers[0xF] = 0;
+            break;
+        case 0x2:
+            vx &= vy;
+            cpu.registers[0xF] = 0;
+            break;
+        case 0x3:
+            vx ^= vy;
+            cpu.registers[0xF] = 0;
+            break;
+        case 0x4:
+        {
+            uint8_t a = vx;
+            uint8_t b = vy;
+            uint8_t sum = a + b;
+            uint8_t carry = (sum < a) ? 1 : 0;
+            vx = sum;
+            cpu.registers[0xF] = carry;
+        }
+        break;
+        case 0x5:
+        {
+            uint8_t a = vx;
+            uint8_t b = vy;
+            uint8_t diff = a - b;
+            uint8_t carry = (a >= b) ? 1 : 0;
+            vx = diff;
+            cpu.registers[0xF] = carry;
+        }
+        break;
+        case 0x6:
+        {
+            uint8_t a = vy;
+            vx = a >> 1;
+            cpu.registers[0xF] = a & 0x1;
+        }
+        break;
+        case 0x7:
+        {
+            uint8_t a = vy;
+            uint8_t b = vx;
+            uint8_t diff = a - b;
+            uint8_t carry = (a >= b) ? 1 : 0;
+            vx = diff;
+            cpu.registers[0xF] = carry;
+        }
+        break;
+        case 0xE:
+        {
+            uint8_t a = vy;
+            vx = a << 1;
+            cpu.registers[0xF] = (a >> 7) & 1;
+        }
+        break;
+        default:
+            invalid_opcode(opcode);
+            break;
+        }
+    }
+
+    bool execute_draw_instruction(const Decoded_Opcode& opcode) {
+        // Drawing waits for the render thread to present the previous frame.
+        if (!cpu.display) {
+            cpu.PC -= 2;
+            return false;
+        }
+
+        cpu.display = false;
+        uint8_t x = cpu.registers[opcode.x] % SCREEN_WIDTH;
+        uint8_t y = cpu.registers[opcode.y] % SCREEN_HEIGHT;
+        cpu.registers[0xF] = 0;
+
+        for (uint8_t row = 0; row < opcode.n; row++) {
+            uint8_t sprite_row = memory[cpu.I + row];
+            for (uint8_t bit = 0; bit < 8; bit++) {
+                uint8_t px = x + bit;
+                uint8_t py = y + row;
+                if (px >= SCREEN_WIDTH || py >= SCREEN_HEIGHT) continue;
+                if ((sprite_row & (0x80 >> bit)) == 0) continue;
+
+                uint16_t index = py * SCREEN_WIDTH + px;
+                if (display_buffer[index] == 0xFFFFFFFF) {
+                    cpu.registers[0xF] = 1;
+                    display_buffer[index] = 0xFF000000;
+                } else {
+                    display_buffer[index] = 0xFFFFFFFF;
+                }
+            }
+        }
+
+        return true;
+    }
+
+    void execute_key_skip_instruction(const Decoded_Opcode& opcode) {
+        uint8_t key = cpu.registers[opcode.x];
+        std::lock_guard<std::mutex> read_key_press(keypad_mutex);
+
+        if (opcode.nn == 0x9E && keypad.keys[key]) {
+            skip_next_instruction();
+        }
+
+        if (opcode.nn == 0xA1 && !keypad.keys[key]) {
+            skip_next_instruction();
+        }
+
+        keypad.key = NO_KEY;
+    }
+
+    void wait_for_key_release(uint8_t register_index) {
+        std::lock_guard<std::mutex> get_key(keypad_mutex);
+        if (keypad.key == NO_KEY) {
+            cpu.PC -= 2;
+        } else if (keypad.keydown) {
+            cpu.PC -= 2;
+        } else {
+            cpu.registers[register_index] = keypad.key;
+            keypad.key = NO_KEY;
+        }
+    }
+
+    void store_bcd(uint8_t register_index) {
+        uint8_t number = cpu.registers[register_index];
+        memory[cpu.I + 2] = number % 10;
+        number /= 10;
+        memory[cpu.I + 1] = number % 10;
+        number /= 10;
+        memory[cpu.I] = number % 10;
+    }
+
+    void store_registers(uint8_t last_register) {
+        for (uint8_t reg = 0; reg <= last_register; reg++) {
+            memory[cpu.I + reg] = cpu.registers[reg];
+        }
+        cpu.I += last_register + 1;
+    }
+
+    void load_registers(uint8_t last_register) {
+        for (uint8_t reg = 0; reg <= last_register; reg++) {
+            cpu.registers[reg] = memory[cpu.I + reg];
+        }
+        cpu.I += last_register + 1;
+    }
+
+    void execute_misc_instruction(const Decoded_Opcode& opcode) {
+        switch (opcode.nn) {
+        case 0x07:
+            cpu.registers[opcode.x] = cpu.delay_timer;
+            break;
+        case 0x15:
+            cpu.delay_timer = cpu.registers[opcode.x];
+            break;
+        case 0x18:
+            cpu.sound_timer = cpu.registers[opcode.x];
+            break;
+        case 0x1E:
+            cpu.I += cpu.registers[opcode.x];
+            if (cpu.I > 0x0FFF) {
+                cpu.registers[0xF] = 1;
+            }
+            break;
+        case 0x0A:
+            wait_for_key_release(opcode.x);
+            break;
+        case 0x29:
+            cpu.I = FONT_ADDR + cpu.registers[opcode.x];
+            break;
+        case 0x33:
+            store_bcd(opcode.x);
+            break;
+        case 0x55:
+            store_registers(opcode.x);
+            break;
+        case 0x65:
+            load_registers(opcode.x);
+            break;
+        default:
+            invalid_opcode(opcode);
+            break;
+        }
+    }
+
+    void execute_opcode(const Decoded_Opcode& opcode) {
+        switch (opcode.kind) {
+        case 0x0:
+            execute_system_instruction(opcode);
+            break;
+        case 0x1:
+            cpu.PC = opcode.nnn;
+            break;
+        case 0x2:
+            cpu.stack[cpu.SP++] = cpu.PC;
+            cpu.PC = opcode.nnn;
+            break;
+        case 0x3:
+            if (cpu.registers[opcode.x] == opcode.nn) {
+                skip_next_instruction();
+            }
+            break;
+        case 0x4:
+            if (cpu.registers[opcode.x] != opcode.nn) {
+                skip_next_instruction();
+            }
+            break;
+        case 0x5:
+            if (cpu.registers[opcode.x] == cpu.registers[opcode.y]) {
+                skip_next_instruction();
+            }
+            break;
+        case 0x6:
+            cpu.registers[opcode.x] = opcode.nn;
+            break;
+        case 0x7:
+            cpu.registers[opcode.x] += opcode.nn;
+            break;
+        case 0x8:
+            execute_arithmetic_instruction(opcode);
+            break;
+        case 0x9:
+            if (cpu.registers[opcode.x] != cpu.registers[opcode.y]) {
+                skip_next_instruction();
+            }
+            break;
+        case 0xA:
+            cpu.I = opcode.nnn;
+            break;
+        case 0xB:
+            cpu.PC = opcode.nnn + cpu.registers[0];
+            break;
+        case 0xC:
+            cpu.registers[opcode.x] = rand() & opcode.nn;
+            break;
+        case 0xD:
+            execute_draw_instruction(opcode);
+            break;
+        case 0xE:
+            execute_key_skip_instruction(opcode);
+            break;
+        case 0xF:
+            execute_misc_instruction(opcode);
+            break;
+        default:
+            invalid_opcode(opcode);
+            break;
+        }
+    }
+
     void cycle() {
-        if (!rom_loaded) {
+        if (!rom_loaded.load()) {
             return;
         }
 
         std::lock_guard<std::mutex> lock(state_mutex);
-        //fetch
-        uint8_t hi_byte = memory[cpu.PC++];
-        uint8_t lo_byte = memory[cpu.PC++];
-        //decode
-        uint16_t opcode = ((uint16_t)hi_byte << 8 | lo_byte);
-        uint8_t kind = (opcode & 0xF000) >> 12;
-        uint8_t VX = (opcode & 0x0F00) >> 8;
-        uint8_t VY = (opcode & 0x00F0) >> 4;
-        uint8_t N = (opcode & 0x000F);
-        uint8_t NN = (opcode & 0x00FF);
-        uint16_t NNN = (opcode & 0x0FFF);
-        //execute
-        switch (kind) {
-        case 0x0:
-            // clear screen
-            if (opcode == 0x00E0) {
-                clear_screen_unlocked();
-            }
-            // return from function
-            if (opcode == 0x00EE) {
-                cpu.PC = cpu.stack[--cpu.SP];
-            }
-            break;
-            // Jump to NNN
-        case 0x1:
-            cpu.PC = NNN;
-            break;
-        case 0x2:
-            // Call
-            cpu.stack[cpu.SP++] = cpu.PC;
-            cpu.PC = NNN;
-            break;
-            // Skip next instruction
-        case 0x3:
-            if (cpu.registers[VX] == NN) {
-                cpu.PC += 2;
-            }
-            break;
-            // Skip next instruction
-        case 0x4:
-            if (cpu.registers[VX] != NN) {
-                cpu.PC += 2;
-            }
-            break;
-            // Skip next instruction
-        case 0x5:
-            if (cpu.registers[VX] == cpu.registers[VY]) {
-                cpu.PC += 2;
-            }
-            break;
-            // Set VX
-        case 0x6:
-            cpu.registers[VX] = NN;
-            break;
-            // Add to VX
-        case 0x7:
-            cpu.registers[VX] += NN;
-            break;
-        case 0x8:
-            // Logical and Arithmetic instructions
-            switch (N) {
-                // Set assign VY to VX
-            case 0x0:
-                cpu.registers[VX] = cpu.registers[VY];
-                cpu.registers[0xF] = 0;
-                break;
-                // OR
-            case 0x1:
-                cpu.registers[VX] |= cpu.registers[VY];
-                cpu.registers[0xF] = 0;
-                break;
-                // AND
-            case 0x2:
-                cpu.registers[VX] &= cpu.registers[VY];
-                cpu.registers[0xF] = 0;
-                break;
-                // XOR
-            case 0x3:
-                cpu.registers[VX] ^= cpu.registers[VY];
-                cpu.registers[0xF] = 0;
-                break;
-                // VX + VY
-            case 0x4:
-            {
-                uint8_t a = cpu.registers[VX];
-                uint8_t b = cpu.registers[VY];
-                uint8_t sum = a + b;
-                uint8_t carry = (sum < a) ? 1 : 0;
-                cpu.registers[VX] = sum;
-                cpu.registers[0xF] = carry;
-            }
-            break;
-            // VX - VY 
-            case 0x5:
-            {
-
-                uint8_t a = cpu.registers[VX];
-                uint8_t b = cpu.registers[VY];
-                uint8_t diff = a - b;
-                uint8_t carry = (a >= b) ? 1 : 0;
-                cpu.registers[VX] = diff;
-                cpu.registers[0xF] = carry;
-            }
-            break;
-            // RSH
-            case 0x6:
-            {
-                uint8_t a = cpu.registers[VY];
-                cpu.registers[VX] = a >> 1;
-                cpu.registers[0xF] = a & 0x1;
-
-            }
-            break;
-            // VY - VX
-            case 0x7:
-            {
-                uint8_t a = cpu.registers[VY];
-                uint8_t b = cpu.registers[VX];
-                uint8_t diff = a - b;
-                uint8_t carry = (a >= b) ? 1 : 0;
-                cpu.registers[VX] = diff;
-                cpu.registers[0xF] = carry;
-            }
-            break;
-            // LSH
-            case 0xE:
-            {
-                uint8_t a = cpu.registers[VY];
-                cpu.registers[VX] = a << 1;
-                cpu.registers[0xF] = (a >> 7) & 1;
-
-            }
-            break;
-            default:
-                printf("Invalid opcode. Sucks to be you.\n");
-                printf("Opcode: 0x%04X | kind: %X, X: %X, Y: %X, N: 0x%04X, NN: 0x%04X, NNN: 0x%04X\n", opcode, kind, VX, VY, N, NN, NNN);
-                break;
-            }
-            break;
-            // Skip
-        case 0x9:
-            if (cpu.registers[VX] != cpu.registers[VY]) {
-                cpu.PC += 2;
-            }
-            break;
-            // Set I to address
-        case 0xA:
-            cpu.I = NNN;
-            break;
-            // Jump
-        case 0xB:
-            cpu.PC = NNN + cpu.registers[0];
-            break;
-            // Rand
-        case 0xC:
-        {
-            int random_number = rand();
-            cpu.registers[VX] = random_number & NN;
-        }
-        break;
-        // Draw
-        case 0xD:
-        {
-            // wait until previous frame is drawn
-            if (!cpu.display) {
-                cpu.PC -= 2;
-                return;
-            }
-            cpu.display = false;
-            uint8_t x = cpu.registers[VX] % SCREEN_WIDTH;
-            uint8_t y = cpu.registers[VY] % SCREEN_HEIGHT;
-            cpu.registers[0xF] = 0;
-            for (uint8_t row = 0; row < N; row++) {
-                uint8_t sprite_row = memory[cpu.I + row];
-                for (uint8_t bit = 0; bit < 8; bit++) {
-                    uint8_t px = x + bit;
-                    uint8_t py = y + row;
-                    if (px >= SCREEN_WIDTH || py >= SCREEN_HEIGHT) continue;
-                    if ((sprite_row & (0x80 >> bit)) == 0) continue;
-                    uint16_t index = py * SCREEN_WIDTH + px;
-                    if (display_buffer[index] == 0xFFFFFFFF) {
-                        cpu.registers[0xF] = 1;
-                        display_buffer[index] = 0xFF000000;
-                    } else {
-                        display_buffer[index] = 0xFFFFFFFF;
-                    }
-                }
-            }
-        }
-        break;
-        // Skip
-        case 0xE:
-        {
-            uint8_t key = cpu.registers[VX];
-            // Skip if key pressed
-            std::lock_guard<std::mutex> read_key_press(keypad_mutex);
-            if (NN == 0x9E && keypad.keys[key]) {
-                cpu.PC += 2;
-            }
-            // Skip if key not pressed
-            if (NN == 0xA1 && !keypad.keys[key]) {
-                cpu.PC += 2;
-            }
-            keypad.key = NO_KEY;
-        }
-        break;
-
-        case 0xF:
-            switch (NN) {
-            case 0x07:
-                // Get the delay timer value and assign to VX
-                cpu.registers[VX] = cpu.delay_timer;
-                break;
-                // Set the delay timer to VX
-            case 0x15:
-                cpu.delay_timer = cpu.registers[VX];
-                break;
-                // Set the sound timer to VX
-            case 0x18:
-                cpu.sound_timer = cpu.registers[VX];
-                break;
-                // Increment I by VX
-            case 0x1E:
-                cpu.I += cpu.registers[VX];
-                if (cpu.I > 0x0FFF) {
-                    cpu.registers[0xF] = 1;
-                }
-                break;
-                // Get Key press
-            case 0x0A:
-            {
-                std::lock_guard<std::mutex> get_key(keypad_mutex);
-                if (keypad.key == NO_KEY) {
-                    cpu.PC -= 2;
-                } else if (keypad.keydown) {
-                    cpu.PC -= 2;
-                } else {
-                    cpu.registers[VX] = keypad.key;
-                    keypad.key = NO_KEY;
-                }
-            }
-            break;
-            // Set I to the location of the FONT sprite in memory
-            case 0x29:
-                cpu.I = FONT_ADDR + cpu.registers[VX];
-                break;
-                // Load the binary-coded decimal value of VX to memory
-            case 0x33:
-            {
-                uint8_t number = cpu.registers[VX];
-                memory[cpu.I + 2] = number % 10;
-                number /= 10;
-                memory[cpu.I + 1] = number % 10;
-                number /= 10;
-                memory[cpu.I] = number % 10;
-            }
-            break;
-            case 0x55: // Store
-                for (uint8_t reg = 0; reg <= VX; reg++) {
-                    memory[cpu.I + reg] = cpu.registers[reg];
-                }
-                cpu.I += VX + 1;
-                break;
-            case 0x65: // Load
-                for (uint8_t reg = 0; reg <= VX; reg++) {
-                    cpu.registers[reg] = memory[cpu.I + reg];
-                }
-                cpu.I += VX + 1;
-                break;
-            default:
-                printf("Invalid opcode. Sucks to be you.\n");
-                printf("Opcode: 0x%04X | kind: %X, X: %X, Y: %X, N: 0x%04X, NN: 0x%04X, NNN: 0x%04X\n", opcode, kind, VX, VY, N, NN, NNN);
-                break;
-            }
-            break;
-        default:
-            printf("Invalid opcode. Sucks to be you.\n");
-            printf("Opcode: 0x%04X | kind: %X, X: %X, Y: %X, N: 0x%04X, NN: 0x%04X, NNN: 0x%04X\n", opcode, kind, VX, VY, N, NN, NNN);
-            break;
-        }
+        execute_opcode(fetch_opcode());
     }
 
     bool load_rom(const char* rom_path) {
