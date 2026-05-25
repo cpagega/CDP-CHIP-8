@@ -5,6 +5,12 @@
       <UniqueIdentifier>{4FC737F1-C7A5-4376-A066-2A32D752A2FF}</UniqueIdentifier>
       <Extensions>cpp;c;cc;cxx;c++;cppm;ixx;def;odl;idl;hpj;bat;asm;asmx</Extensions>
     </Filter>
+    <Filter Include="Source Files\Dear ImGui">
+      <UniqueIdentifier>{223C0F1E-7D8C-4B25-8F02-F1E3348955C9}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Header Files\Dear ImGui">
+      <UniqueIdentifier>{0B9455D2-1D92-4457-8D6B-3E4143A5B4E7}</UniqueIdentifier>
+    </Filter>
     <Filter Include="Header Files">
       <UniqueIdentifier>{93995380-89BD-4b04-88EB-625FBE52EBFB}</UniqueIdentifier>
       <Extensions>h;hh;hpp;hxx;h++;hm;inl;inc;ipp;xsd</Extensions>
@@ -24,6 +30,24 @@
     <ClCompile Include="Plaform.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="third_party\imgui\imgui.cpp">
+      <Filter>Source Files\Dear ImGui</Filter>
+    </ClCompile>
+    <ClCompile Include="third_party\imgui\imgui_draw.cpp">
+      <Filter>Source Files\Dear ImGui</Filter>
+    </ClCompile>
+    <ClCompile Include="third_party\imgui\imgui_tables.cpp">
+      <Filter>Source Files\Dear ImGui</Filter>
+    </ClCompile>
+    <ClCompile Include="third_party\imgui\imgui_widgets.cpp">
+      <Filter>Source Files\Dear ImGui</Filter>
+    </ClCompile>
+    <ClCompile Include="third_party\imgui\backends\imgui_impl_sdl3.cpp">
+      <Filter>Source Files\Dear ImGui</Filter>
+    </ClCompile>
+    <ClCompile Include="third_party\imgui\backends\imgui_impl_sdlrenderer3.cpp">
+      <Filter>Source Files\Dear ImGui</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="CDP_Chip8.h">
@@ -31,6 +55,18 @@
     </ClInclude>
     <ClInclude Include="Platform.h">
       <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="third_party\imgui\imconfig.h">
+      <Filter>Header Files\Dear ImGui</Filter>
+    </ClInclude>
+    <ClInclude Include="third_party\imgui\imgui.h">
+      <Filter>Header Files\Dear ImGui</Filter>
+    </ClInclude>
+    <ClInclude Include="third_party\imgui\backends\imgui_impl_sdl3.h">
+      <Filter>Header Files\Dear ImGui</Filter>
+    </ClInclude>
+    <ClInclude Include="third_party\imgui\backends\imgui_impl_sdlrenderer3.h">
+      <Filter>Header Files\Dear ImGui</Filter>
     </ClInclude>
   </ItemGroup>
 </Project>

@@ -1,4 +1,6 @@
 #include <SDL3/SDL_audio.h>
+#include <cmath>
+#include <cstddef>
 #include "Platform.h"
 
 
@@ -135,7 +137,7 @@ void play_tone(SDL_AudioStream *stream, Oscillator *osc, float *audio_buffer) {
     int queued = SDL_GetAudioStreamQueued(stream);
     if (queued < 0) {
         SDL_Log("SDL_GetAudioStreamQueued failed: %s", SDL_GetError());
-    } else if (queued < TARGET_QUEUE_BYTES) {
+    } else if (static_cast<std::size_t>(queued) < TARGET_QUEUE_BYTES) {
         fill_audio_buffer(osc, audio_buffer);
         if (!SDL_PutAudioStreamData(stream, audio_buffer, AUDIO_SAMPLE_SIZE * sizeof(float))) {
             SDL_Log("Error adding audio data to stream\n%s", SDL_GetError());

@@ -1,6 +1,7 @@
 #pragma once
 #include <stdint.h>
 #include <atomic>
+#include <cstddef>
 namespace CH8
 {
     constexpr auto MEMORY_SIZE = 0x1000;
@@ -31,8 +32,25 @@ namespace CH8
         bool keydown;
     };
 
-    void reset();
-    void load_rom();
+    struct Debug_State {
+        bool display;
+        bool rom_loaded;
+        uint16_t PC;
+        uint16_t I;
+        uint16_t stack[16];
+        uint8_t SP;
+        uint8_t delay_timer;
+        uint8_t sound_timer;
+        uint8_t registers[16];
+    };
+
+    void initialize();
+    bool load_rom(const char* rom_path);
+    bool is_rom_loaded();
+    void draw_splash_screen();
+    Debug_State get_debug_state();
+    void copy_memory(uint8_t* destination, std::size_t count);
+    void copy_display_buffer(uint32_t* destination, std::size_t count);
     void clear_screen();
     void cycle();
     void decrement_delay_timer();
